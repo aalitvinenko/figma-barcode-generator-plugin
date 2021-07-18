@@ -1,8 +1,8 @@
 <h2 class="header">EAN13 barcode generator</h2>
 
-<div class="inputsBlock">
-  <div class="inputsRow">
-    <div class="inputContainer">
+<div class="form">
+  <div class="formRow">
+    <div class="formCell">
       <label for="value">Value</label>
       <input
         type="text"
@@ -14,29 +14,29 @@
         placeholder="Enter 12 or 13 digits"
       />
     </div>
-    <div class="inputContainer">
+    <div class="formCell">
       <label for="color">Color</label>
       <input type="color" id="color" value="#000000" required />
     </div>
   </div>
-  <div class="inputsRow">
-    <div class="inputContainer">
+  <div class="formRow">
+    <div class="formCell">
       <label for="width">Width</label>
       <input type="number" id="width" value="300" min="50" required />
     </div>
-    <div class="inputContainer">
+    <div class="formCell">
       <label for="height">Height</label>
       <input type="number" id="height" value="100" min="50" required />
     </div>
   </div>
-  <div class="inputsRow">
-    <div class="inputContainer">
+  <div class="formRow">
+    <div class="formCell">
       <button class="primary" id="create">Create</button>
     </div>
-    <div class="inputContainer">
+    <div class="formCell">
       <button id="cancel">Cancel</button>
     </div>
   </div>
 </div>
 
-<div id="error"></div>
+<div id="error" class="errorMessage"></div>
