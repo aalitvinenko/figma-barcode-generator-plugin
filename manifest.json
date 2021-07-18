@@ -1,0 +1,7 @@
+{
+  "name": "EAN13 barcode generator for Figma",
+  "id": "994680571116229000",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html"
+}
