@@ -1,50 +1,69 @@
 import Command, {
   CREATE_BARCODE_COMMAND_TYPE,
   CANCEL_COMMAND_TYPE,
+  SHOW_ERROR_COMMAND_TYPE,
+  CreateBarcodeCommand,
+  CancelCommand
 } from "../shared/commands";
 
-import Response, {
-  BARCODE_CREATED_RESPONSE,
-  ERROR_RESPONSE,
-} from "../shared/responses";
 import { generateChecksum, validate } from "../utils";
+import Ean13Code from "./ean13code";
 
 figma.showUI(__html__);
 figma.ui.resize(500, 370);
 
 figma.ui.onmessage = (command: Command) => {
-  switch (command.type) {
-    case CREATE_BARCODE_COMMAND_TYPE:
-      {
-        try {
-          generateBarcode(
-            command.payload.value,
-            command.payload.width,
-            command.payload.height,
-            command.payload.color
-          );
-        } catch (e) {
-          sendError((e as Error).message);
+  try {
+    switch (command.type) {
+      case CREATE_BARCODE_COMMAND_TYPE:
+        {
+          handleCreateBarcodeCommand(command);
         }
-      }
-      break;
-    case CANCEL_COMMAND_TYPE:
-      {
-        figma.closePlugin();
-      }
-      break;
+        break;
+      case CANCEL_COMMAND_TYPE:
+        {
+          handleCancelCommand(command);
+        }
+        break;
+    }
+  } catch (e) {
+    sendCommand({
+      type: SHOW_ERROR_COMMAND_TYPE,
+      payload: { message: (e as Error).message },
+    });
   }
 };
 
-const sendError = (value: any) => {
-  sendResponse({ type: ERROR_RESPONSE, payload: { message: value } });
+const handleCreateBarcodeCommand = (command: CreateBarcodeCommand): void => {
+  let value = command.payload.value;
+  const { width, height, color } = command.payload;
+
+  const result = validate(value);
+  if (!result.isValid) {
+    throw new Error(result.error);
+  }
+
+  if (value.length === 12) {
+    value += generateChecksum(value);
+  }
+
+  const code = encode(value);
+  const rgbColor = tryParseColor(color) ?? ({ r: 0, g: 0, b: 0 } as RGB);
+
+  drawBarcode(value, code, width, height, rgbColor);
+
+  figma.notify(`Barcode with value ${value} created`);
 };
 
-const sendResponse = (response: Response) => {
-  figma.ui.postMessage(response);
+const handleCancelCommand = (command: CancelCommand) => {
+  figma.closePlugin();
 };
 
-const getCode = (value: string) => {
+const sendCommand = (command: Command): void => {
+  figma.ui.postMessage(command);
+};
+
+const encode = (value: string): Ean13Code => {
   const tables = [
     [0xd, 0x19, 0x13, 0x3d, 0x23, 0x31, 0x2f, 0x3b, 0x37, 0xb],
     [0x27, 0x33, 0x1b, 0x21, 0x1d, 0x39, 0x5, 0x11, 0x9, 0x17],
@@ -77,95 +96,79 @@ const getCode = (value: string) => {
     i++;
   }
 
-  return [leftCode, rightCode];
+  return new Ean13Code(leftCode, rightCode);
 };
 
-const generateBarcode = (
+const drawBarcode = (
   value: string,
-  width: number,
-  height: number,
-  color: string
-) => {
-  const result = validate(value);
-  if (!result.isValid) {
-    throw new Error(result.error);
-  }
-
-  if (value.length === 12) {
-    value += generateChecksum(value);
-  }
-
-  const code = getCode(value);
-  const rgbColor = tryParseColor(color) ?? ({ r: 0, g: 0, b: 0 } as RGB);
-
-  draw(value, code, width, height, rgbColor);
-
-  figma.notify(`Barcode with value ${value} created`);
-  sendResponse({ type: BARCODE_CREATED_RESPONSE, payload: { value: value } });
-};
-
-const draw = (
-  value: string,
-  code: number[],
+  code: Ean13Code,
   width: number,
   height: number,
   color: RGB
 ) => {
-  const item_width = width / 95;
+  const rectWidth = width / 95;
 
   const nodes: SceneNode[] = [];
 
-  let left = 0;
-  nodes.push(fillRect(left, 0, item_width, height, color));
+  // static start part
+  let currentX = 0;
+  nodes.push(createRectangle(currentX, 0, rectWidth, height, color));
 
-  left = left + item_width * 2;
-  nodes.push(fillRect(left, 0, item_width, height, color));
+  currentX = currentX + rectWidth * 2;
+  nodes.push(createRectangle(currentX, 0, rectWidth, height, color));
 
-  left = left + item_width * 7 * 6;
-  let i = 0;
-  while (i <= 42) {
-    if (code[0] % 2) {
-      nodes.push(fillRect(left, 0, item_width, height, color));
+  // left part of code
+  currentX = currentX + rectWidth * 7 * 6;
+  let leftCodeCurrentRemainder = code.left;
+  for (let i = 0; i <= 42; i++) {
+    if (leftCodeCurrentRemainder % 2) {
+      nodes.push(createRectangle(currentX, 0, rectWidth, height, color));
     }
-    left = left - item_width;
-    code[0] = Math.floor(code[0] / 2);
-    i++;
+
+    currentX = currentX - rectWidth;
+    leftCodeCurrentRemainder = Math.floor(leftCodeCurrentRemainder / 2);
   }
 
-  left = left + item_width * (7 * 6) + 3 * item_width;
-  nodes.push(fillRect(left, 0, item_width, height, color));
+  // static middle part
+  currentX = currentX + rectWidth * (7 * 6) + 3 * rectWidth;
+  nodes.push(createRectangle(currentX, 0, rectWidth, height, color));
 
-  left = left + item_width * 2;
-  nodes.push(fillRect(left, 0, item_width, height, color));
+  currentX = currentX + rectWidth * 2;
+  nodes.push(createRectangle(currentX, 0, rectWidth, height, color));
 
-  left = left + item_width * 7 * 6 + item_width;
-  while (code[1] > 0) {
-    if (code[1] % 2) {
-      nodes.push(fillRect(left, 0, item_width, height, color));
+  // right part of code
+  currentX = currentX + rectWidth * 7 * 6 + rectWidth;
+  let rightCodeCurrentRemainder = code.right;
+  while (rightCodeCurrentRemainder > 0) {
+    if (rightCodeCurrentRemainder % 2) {
+      nodes.push(createRectangle(currentX, 0, rectWidth, height, color));
     }
-    left = left - item_width;
-    code[1] = Math.floor(code[1] / 2);
+
+    currentX = currentX - rectWidth;
+    rightCodeCurrentRemainder = Math.floor(rightCodeCurrentRemainder / 2);
   }
 
-  left = left + item_width * 7 * 6 + item_width;
-  nodes.push(fillRect(left, 0, item_width, height, color));
+  // static end part
+  currentX = currentX + rectWidth * 7 * 6 + rectWidth;
+  nodes.push(createRectangle(currentX, 0, rectWidth, height, color));
 
-  left = left + item_width * 2;
-  nodes.push(fillRect(left, 0, item_width, height, color));
+  currentX = currentX + rectWidth * 2;
+  nodes.push(createRectangle(currentX, 0, rectWidth, height, color));
 
+  // finishing touches
   const group = figma.group(nodes, figma.currentPage);
   group.name = `Barcode ${value}`;
   figma.currentPage.selection = [group];
   figma.viewport.scrollAndZoomIntoView([group]);
 };
 
-const fillRect = (
+const createRectangle = (
   x: number,
   y: number,
   width: number,
   height: number,
   color: RGB
-) => {
+): RectangleNode => {
   const rect = figma.createRectangle();
   rect.x = x;
   rect.y = y;
@@ -175,7 +178,7 @@ const fillRect = (
   return rect;
 };
 
-const tryParseColor = (color?: string | null) => {
+const tryParseColor = (color?: string | null): RGB | null => {
   if (color === undefined || color === null) return null;
 
   const normal = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);

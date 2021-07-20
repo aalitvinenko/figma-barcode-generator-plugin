@@ -1,32 +1,22 @@
 import Command, {
   CREATE_BARCODE_COMMAND_TYPE,
   CANCEL_COMMAND_TYPE,
+  SHOW_ERROR_COMMAND_TYPE,
+  ShowErrorCommand,
 } from "../shared/commands";
 
-import Response, {
-  BARCODE_CREATED_RESPONSE,
-  ERROR_RESPONSE,
-} from "../shared/responses";
 import { validate } from "../utils";
 
 import "./ui.css";
 
-window.onmessage = (event: MessageEvent<any>) => {
-  var response = event.data.pluginMessage as Response;
-
-  switch (response.type) {
-    case BARCODE_CREATED_RESPONSE:
-      break;
-    case ERROR_RESPONSE:
-      {
-        setError(response.payload.message);
-      }
-      break;
-  }
+const handleColorChange = (ev: Event) => {
+  var input = ev.target as HTMLInputElement;
+  input.style.backgroundColor = input.value;
 };
 
-const setError = (error?: string) => {
-  document.getElementById("error").innerText = error || "";
+const handleValueBlur = (ev: Event) => {
+  var input = ev.target as HTMLInputElement;
+  validateValue(input.value);
 };
 
 const handleCreateClick = () => {
@@ -54,6 +44,10 @@ const handleCancelClick = () => {
   });
 };
 
+const handleShowErrorCommand = (command: ShowErrorCommand) => {
+  setError(command.payload.message);
+}
+
 const validateValue = (value: string): boolean => {
   const result = validate(value);
 
@@ -62,15 +56,18 @@ const validateValue = (value: string): boolean => {
   return result.isValid;
 };
 
-const handleColorChange = (ev: Event) => { 
-  var input = (ev.target as HTMLInputElement);
-  input.style.backgroundColor = input.value;
-}
+const setError = (error?: string) => {
+  document.getElementById("error").innerText = error || "";
+};
 
-const handleValueBlur = (ev: Event) => { 
-  var input = (ev.target as HTMLInputElement);
-  validateValue(input.value)
-}
+const sendCommand = (command: Command) => {
+  parent.postMessage(
+    {
+      pluginMessage: command,
+    },
+    "*"
+  );
+};
 
 window.onload = () => {
   document.getElementById("value").onblur = handleValueBlur;
@@ -81,11 +78,14 @@ window.onload = () => {
   document.getElementById("color").dispatchEvent(new Event("change"));
 };
 
-const sendCommand = (command: Command) => {
-  parent.postMessage(
-    {
-      pluginMessage: command,
-    },
-    "*"
-  );
+window.onmessage = (event: MessageEvent<any>) => {
+  var command = event.data.pluginMessage as Command;
+
+  switch (command.type) {
+    case SHOW_ERROR_COMMAND_TYPE:
+      {
+        handleShowErrorCommand(command);
+      }
+      break;
+  }
 };
